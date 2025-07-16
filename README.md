@@ -72,7 +72,6 @@ You can choose [Heroku](https://www.heroku.com/) or [Render](http://render.com/)
 - Input [OpenAI API Key](https://platform.openai.com/account/api-keys) in `OPENAI_API_KEY`.
 - Remember your heroku, ID
 
-
 ### Deploy this on Render.com
 
 [![Deploy to Render](http://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy)
@@ -80,3 +79,4 @@ You can choose [Heroku](https://www.heroku.com/) or [Render](http://render.com/)
 ## License
 
 This project is licensed under the Apache License, Version 2.0. For more information, see the [LICENSE](https://www.apache.org/licenses/LICENSE-2.0) file.
+
