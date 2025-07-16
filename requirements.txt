@@ -1,3 +1,4 @@
+--no-binary :all:
 line-bot-sdk==3.4.0
-aiohttp==3.8.5
 openai==0.27.8
+aiohttp==3.8.5
