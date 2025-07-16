@@ -1,3 +1,4 @@
 build:
   environment: python
   version: 3.9.13
+  buildCommand: pip install --upgrade pip setuptools wheel
