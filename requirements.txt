@@ -1,4 +1,5 @@
 --prefer-binary
+Cython==0.29.36
 line-bot-sdk==3.4.0
 aiohttp==3.8.1
 openai==0.27.8
