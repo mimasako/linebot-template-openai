@@ -9,8 +9,8 @@ load_dotenv()
 
 app = FastAPI()
 
-line_bot_api = LineBotApi(channel_access_token=os.getenv("LINE_CHANNEL_ACCESS_TOKEN"))
-handler = WebhookHandler(channel_secret=os.getenv("LINE_CHANNEL_SECRET"))
+line_bot_api = LineBotApi(os.getenv("LINE_CHANNEL_ACCESS_TOKEN"))
+handler = WebhookHandler(os.getenv("LINE_CHANNEL_SECRET"))
 
 @app.post("/webhook")
 async def callback(request: Request):
