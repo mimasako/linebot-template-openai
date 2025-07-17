@@ -1,69 +1,46 @@
-import os
-import openai
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
+from linebot.v3.webhook import WebhookParser
+from linebot.v3.messaging import AsyncLineBotApi
+from linebot.v3.exceptions import InvalidSignatureError
 from dotenv import load_dotenv
+import os
 
-from linebot.v3 import WebhookHandler
-from linebot.v3.messaging import (
-    MessagingApi,
-    Configuration,
-    ApiClient,
-    ReplyMessageRequest,
-    TextMessage
-)
-from linebot.v3.webhooks import (
-    MessageEvent,
-    TextMessageContent
-)
-
-# .env を読み込む
+# 環境変数の読み込み
 load_dotenv()
 
-# 環境変数からキーを取得
-channel_access_token = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
+# 環境変数の取得
 channel_secret = os.getenv("LINE_CHANNEL_SECRET")
-openai_api_key = os.getenv("OPENAI_API_KEY")
+channel_access_token = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
 
-# LINE Messaging API の設定
-configuration = Configuration(access_token=channel_access_token)
-handler = WebhookHandler(channel_secret)
-line_bot_api = MessagingApi(ApiClient(configuration))
+# 必須チェック
+if channel_secret is None or channel_access_token is None:
+    raise ValueError("環境変数が設定されていません")
 
-# OpenAI API キー設定
-openai.api_key = openai_api_key
+# LINE SDK の初期化
+parser = WebhookParser(channel_secret)
+line_bot_api = AsyncLineBotApi(channel_access_token)
 
-# FastAPI アプリ作成
+# FastAPIの初期化
 app = FastAPI()
 
+# Webhookのエンドポイント
 @app.post("/callback")
 async def callback(request: Request):
+    signature = request.headers.get("x-line-signature", "")
     body = await request.body()
-    signature = request.headers.get("x-line-signature")
 
     try:
-        handler.handle(body.decode("utf-8"), signature)
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        events = parser.parse(body.decode("utf-8"), signature)
+    except InvalidSignatureError:
+        return JSONResponse(status_code=400, content={"message": "Invalid signature"})
 
-    return "OK"
+    for event in events:
+        print("受信イベント:", event)
 
-# メッセージ受信時の処理
-@handler.add(MessageEvent, message=TextMessageContent)
-def handle_message(event: MessageEvent):
-    user_message = event.message.text
+    return JSONResponse(content={"message": "OK"})
 
-    # OpenAI へ問い合わせ
-    response = openai.ChatCompletion.create(
-        model="gpt-3.5-turbo",
-        messages=[
-            {"role": "user", "content": user_message}
-        ]
-    )
-    ai_reply = response.choices[0].message.content.strip()
-
-    # LINEへ返信
-    reply = ReplyMessageRequest(
-        reply_token=event.reply_token,
-        messages=[TextMessage(text=ai_reply)]
-    )
-    line_bot_api.reply_message(reply)
+# ↓Renderではこの部分は不要なのでコメントアウト
+# if __name__ == "__main__":
+#     import uvicorn
+#     uvicorn.run("main:app", host="0.0.0.0", port=10000)
