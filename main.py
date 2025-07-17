@@ -7,7 +7,7 @@ import os
 
 load_dotenv()
 
-app = FastAPI()
+app = FastAPI()  # ← これが「app not defined」エラーを防ぐ重要な行
 
 line_bot_api = LineBotApi(os.getenv("LINE_CHANNEL_ACCESS_TOKEN"))
 handler = WebhookHandler(os.getenv("LINE_CHANNEL_SECRET"))
