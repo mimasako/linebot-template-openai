@@ -21,10 +21,10 @@ if channel_secret is None or channel_access_token is None:
 parser = WebhookParser(channel_secret)
 line_bot_api = AsyncLineBotApi(channel_access_token)
 
-# FastAPIの初期化
+# FastAPI の初期化
 app = FastAPI()
 
-# Webhookのエンドポイント
+# Webhook のエンドポイント
 @app.post("/callback")
 async def callback(request: Request):
     signature = request.headers.get("x-line-signature", "")
@@ -40,7 +40,7 @@ async def callback(request: Request):
 
     return JSONResponse(content={"message": "OK"})
 
-# ↓Renderではこの部分は不要なのでコメントアウト
+# Renderでは下記の部分は不要なのでコメントアウト
 # if __name__ == "__main__":
 #     import uvicorn
 #     uvicorn.run("main:app", host="0.0.0.0", port=10000)
