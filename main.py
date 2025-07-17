@@ -7,20 +7,31 @@ import os
 
 load_dotenv()
 
-app = FastAPI()  # ← これが「app not defined」エラーを防ぐ重要な行
+app = FastAPI()
 
 line_bot_api = LineBotApi(os.getenv("LINE_CHANNEL_ACCESS_TOKEN"))
 handler = WebhookHandler(os.getenv("LINE_CHANNEL_SECRET"))
 
-@app.post("/webhook")
+@app.post("/callback")
 async def callback(request: Request):
     signature = request.headers.get("X-Line-Signature", "")
     body = await request.body()
+
     try:
         handler.handle(body.decode(), signature)
     except InvalidSignatureError:
         return {"status": "invalid signature"}
+
     return {"status": "ok"}
+
+# メッセージ受信時の返信処理
+@handler.add(MessageEvent, message=TextMessage)
+def handle_message(event):
+    reply_text = f"あなたが送ったメッセージ: 「{event.message.text}」"
+    line_bot_api.reply_message(
+        event.reply_token,
+        TextSendMessage(text=reply_text)
+    )
 
 if __name__ == "__main__":
     import uvicorn
