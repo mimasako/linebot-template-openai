@@ -6,7 +6,7 @@ services:
       apt-get update && \
       apt-get install -y tesseract-ocr libtesseract-dev libleptonica-dev && \
       pip install -r requirements.txt && \
-      ln -s $(which tesseract) /opt/render/project/.venv/bin/tesseract
+      ln -s /usr/bin/tesseract /opt/render/project/.venv/bin/tesseract
     startCommand: uvicorn main:app --host 0.0.0.0 --port 10000
     plan: free
     envVars:
