@@ -16,18 +16,16 @@ handler = WebhookHandler(os.getenv("LINE_CHANNEL_SECRET"))
 async def callback(request: Request):
     signature = request.headers.get("X-Line-Signature", "")
     body = await request.body()
-
     try:
         handler.handle(body.decode(), signature)
     except InvalidSignatureError:
         return {"status": "invalid signature"}
-
     return {"status": "ok"}
 
 # メッセージ受信時の返信処理
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
-    reply_text = f"あなたが送ったメッセージ: 「{event.message.text}」"
+    reply_text = f"あなたが送ったメッセージ: {event.message.text}"
     line_bot_api.reply_message(
         event.reply_token,
         TextSendMessage(text=reply_text)
