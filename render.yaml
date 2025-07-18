@@ -1,4 +1,17 @@
-build:
-  environment: python
-  version: 3.9.13
-  buildCommand: pip install --upgrade pip setuptools wheel
+services:
+  - type: web
+    name: linebot-template-openai
+    env: python
+    buildCommand: |
+      apt-get update
+      apt-get install -y tesseract-ocr
+      pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port 10000
+    plan: free
+    envVars:
+      - key: LINE_CHANNEL_ACCESS_TOKEN
+        sync: false
+      - key: LINE_CHANNEL_SECRET
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
