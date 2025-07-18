@@ -1,12 +1,11 @@
 import os
 import io
-import pytesseract
 import openai
+import pytesseract
 from fastapi import FastAPI, Request
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
-from linebot.models import MessageEvent, ImageMessage, TextMessage, TextSendMessage
-
+from linebot.models import MessageEvent, TextMessage, ImageMessage, TextSendMessage
 from dotenv import load_dotenv
 from PIL import Image
 
@@ -14,6 +13,7 @@ load_dotenv()
 
 app = FastAPI()
 
+# 環境変数
 LINE_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
 LINE_CHANNEL_SECRET = os.getenv("LINE_CHANNEL_SECRET")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -24,7 +24,7 @@ openai.api_key = OPENAI_API_KEY
 
 @app.post("/callback")
 async def callback(request: Request):
-    signature = request.headers["X-Line-Signature"]
+    signature = request.headers.get("X-Line-Signature", "")
     body = await request.body()
     body = body.decode("utf-8")
 
@@ -36,25 +36,27 @@ async def callback(request: Request):
     return "OK", 200
 
 @handler.add(MessageEvent, message=TextMessage)
-def handle_text(event):
+def handle_text_message(event):
     user_text = event.message.text
 
     response = openai.ChatCompletion.create(
         model="gpt-3.5-turbo",
-        messages=[
-            {"role": "user", "content": user_text}
-        ]
+        messages=[{"role": "user", "content": user_text}]
     )
 
-    ai_reply = response.choices[0].message["content"]
+    reply_text = response.choices[0].message["content"]
+
     line_bot_api.reply_message(
         event.reply_token,
-        TextSendMessage(text=ai_reply)
+        TextSendMessage(text=reply_text)
     )
 
 @handler.add(MessageEvent, message=ImageMessage)
-def handle_image(event):
-    line_bot_api.reply_message(event.reply_token, TextSendMessage(text="画像を受け取りました。処理中です…"))
+def handle_image_message(event):
+    line_bot_api.reply_message(
+        event.reply_token,
+        TextSendMessage(text="画像を受け取りました。処理中です…")
+    )
 
     message_content = line_bot_api.get_message_content(event.message.id)
     image_data = io.BytesIO(message_content.content)
@@ -66,14 +68,14 @@ def handle_image(event):
         response = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",
             messages=[
-                {"role": "user", "content": f"以下のテキストを分析して、競艇の予想をしてください:\n{text}"}
+                {"role": "user", "content": f"以下の情報を分析して、競艇予想をして:\n{text}"}
             ]
         )
-        ai_reply = response.choices[0].message["content"]
+        reply_text = response.choices[0].message["content"]
     except Exception as e:
-        ai_reply = f"OCR処理でエラーが発生しました：{str(e)}"
+        reply_text = f"OCRエラーが発生しました: {str(e)}"
 
     line_bot_api.push_message(
         event.source.user_id,
-        TextSendMessage(text=ai_reply)
+        TextSendMessage(text=reply_text)
     )
