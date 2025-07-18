@@ -1,6 +1,6 @@
 from fastapi import FastAPI, Request
 from linebot import LineBotApi, WebhookHandler
-from linebot.models import MessageEvent, TextMessage, TextSendMessage
+from linebot.models import MessageEvent, TextMessage, TextSendMessage, ImageMessage
 from linebot.exceptions import InvalidSignatureError
 from dotenv import load_dotenv
 import os
@@ -22,10 +22,19 @@ async def callback(request: Request):
         return {"status": "invalid signature"}
     return {"status": "ok"}
 
-# メッセージ受信時の返信処理
+# テキストメッセージの処理
 @handler.add(MessageEvent, message=TextMessage)
-def handle_message(event):
-    reply_text = f"あなたが送ったメッセージ: {event.message.text}"
+def handle_text_message(event):
+    reply_text = f"あなたが送ったメッセージ:「{event.message.text}」"
+    line_bot_api.reply_message(
+        event.reply_token,
+        TextSendMessage(text=reply_text)
+    )
+
+# 画像メッセージの処理
+@handler.add(MessageEvent, message=ImageMessage)
+def handle_image_message(event):
+    reply_text = "画像を受け取りました。処理中です..."
     line_bot_api.reply_message(
         event.reply_token,
         TextSendMessage(text=reply_text)
