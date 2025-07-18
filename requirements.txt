@@ -1,7 +1,4 @@
-fastapi
-uvicorn
-line-bot-sdk==3.4.0
 openai
-pytesseract
-Pillow
-requests
+fastapi
+line-bot-sdk
+python-dotenv
