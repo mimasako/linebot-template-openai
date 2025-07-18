@@ -1,97 +1,79 @@
 import os
-from fastapi import FastAPI, Request
-from fastapi.responses import PlainTextResponse
-from linebot.v3.webhook import WebhookHandler
-from linebot.v3.messaging import (
-    MessagingApi,
-    MessagingApiBlob,
-    ReplyMessageRequest,
-    PushMessageRequest,
-    TextMessage,
-    ImageMessage,
-)
-from linebot.v3.models import (
-    MessageEvent,
-    TextMessageContent,
-    ImageMessageContent
-)
-from dotenv import load_dotenv
-from PIL import Image
+import io
 import pytesseract
 import openai
-import requests
-from io import BytesIO
+from fastapi import FastAPI, Request
+from linebot import LineBotApi, WebhookHandler
+from linebot.exceptions import InvalidSignatureError
+from linebot.models import MessageEvent, ImageMessage, TextMessage, TextSendMessage
 
-# .env 読み込み
+from dotenv import load_dotenv
+from PIL import Image
+
 load_dotenv()
 
-# APIキー設定
-handler = WebhookHandler(os.getenv("LINE_CHANNEL_SECRET"))
-messaging_api = MessagingApi()
-blob_api = MessagingApiBlob()
-openai.api_key = os.getenv("OPENAI_API_KEY")
-
-# tesseractパス（Render用）
-pytesseract.pytesseract.tesseract_cmd = "/usr/bin/tesseract"
-
-# FastAPI 初期化
 app = FastAPI()
 
+LINE_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
+LINE_CHANNEL_SECRET = os.getenv("LINE_CHANNEL_SECRET")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+
+line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
+handler = WebhookHandler(LINE_CHANNEL_SECRET)
+openai.api_key = OPENAI_API_KEY
 
 @app.post("/callback")
 async def callback(request: Request):
-    signature = request.headers.get("X-Line-Signature", "")
+    signature = request.headers["X-Line-Signature"]
     body = await request.body()
+    body = body.decode("utf-8")
+
     try:
-        handler.handle(body.decode("utf-8"), signature)
-    except Exception as e:
-        return PlainTextResponse(f"Invalid signature or error: {str(e)}", status_code=400)
-    return PlainTextResponse("OK", status_code=200)
+        handler.handle(body, signature)
+    except InvalidSignatureError:
+        return "Invalid signature", 400
 
+    return "OK", 200
 
-@handler.add(MessageEvent, message=ImageMessageContent)
-def handle_image(event):
-    # 「画像受信」応答
-    messaging_api.reply_message(
-        ReplyMessageRequest(
-            reply_token=event.reply_token,
-            messages=[TextMessage(text="画像を受け取りました。処理中です…")]
-        )
+@handler.add(MessageEvent, message=TextMessage)
+def handle_text(event):
+    user_text = event.message.text
+
+    response = openai.ChatCompletion.create(
+        model="gpt-3.5-turbo",
+        messages=[
+            {"role": "user", "content": user_text}
+        ]
     )
 
+    ai_reply = response.choices[0].message["content"]
+    line_bot_api.reply_message(
+        event.reply_token,
+        TextSendMessage(text=ai_reply)
+    )
+
+@handler.add(MessageEvent, message=ImageMessage)
+def handle_image(event):
+    line_bot_api.reply_message(event.reply_token, TextSendMessage(text="画像を受け取りました。処理中です…"))
+
+    message_content = line_bot_api.get_message_content(event.message.id)
+    image_data = io.BytesIO(message_content.content)
+
     try:
-        # 画像取得
-        message_id = event.message.id
-        content = blob_api.get_message_content(message_id)
-        image_data = BytesIO(content.content)
         image = Image.open(image_data)
+        text = pytesseract.image_to_string(image, lang='jpn')
 
-        # OCR処理
-        ocr_text = pytesseract.image_to_string(image, lang='jpn')
-
-        # OpenAIに送信
         response = openai.ChatCompletion.create(
-            model="gpt-4",
+            model="gpt-3.5-turbo",
             messages=[
-                {"role": "system", "content": "あなたは競艇の予想AIです。出走表の情報から、勝ちそうな選手を予想してください。"},
-                {"role": "user", "content": ocr_text}
+                {"role": "user", "content": f"以下のテキストを分析して、競艇の予想をしてください:\n{text}"}
             ]
         )
-
-        prediction = response["choices"][0]["message"]["content"].strip()
-
-        # 結果を返信
-        messaging_api.push_message(
-            PushMessageRequest(
-                to=event.source.user_id,
-                messages=[TextMessage(text=f"予想結果：\n{prediction}")]
-            )
-        )
-
+        ai_reply = response.choices[0].message["content"]
     except Exception as e:
-        messaging_api.push_message(
-            PushMessageRequest(
-                to=event.source.user_id,
-                messages=[TextMessage(text=f"OCR処理またはAI応答でエラーが発生しました：{str(e)}")]
-            )
-        )
+        ai_reply = f"OCR処理でエラーが発生しました：{str(e)}"
+
+    line_bot_api.push_message(
+        event.source.user_id,
+        TextSendMessage(text=ai_reply)
+    )
