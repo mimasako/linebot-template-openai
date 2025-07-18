@@ -1,7 +1,7 @@
 fastapi
+uvicorn
+line-bot-sdk==2.4.1
 python-dotenv
 openai
 pytesseract
-pillow
-requests
-line-bot-sdk==3.4.0
+Pillow
