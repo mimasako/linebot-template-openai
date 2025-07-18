@@ -21,9 +21,6 @@ handler = WebhookHandler(os.getenv("LINE_CHANNEL_SECRET"))
 # OpenAI APIキー
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
-# tesseract パス設定（Render用）
-pytesseract.pytesseract.tesseract_cmd = "/usr/bin/tesseract"
-
 # FastAPI 初期化
 app = FastAPI()
 
@@ -31,30 +28,33 @@ app = FastAPI()
 async def callback(request: Request):
     signature = request.headers.get("X-Line-Signature", "")
     body = await request.body()
+
     try:
         handler.handle(body.decode("utf-8"), signature)
     except InvalidSignatureError:
         return PlainTextResponse("Invalid signature", status_code=400)
+
     return PlainTextResponse("OK", status_code=200)
 
+# 画像メッセージを処理
 @handler.add(MessageEvent, message=ImageMessage)
 def handle_image(event):
+    # 処理中メッセージを送信
     line_bot_api.reply_message(
         event.reply_token,
         TextSendMessage(text="画像を受け取りました。処理中です…")
     )
 
-    # 画像の取得
-    message_content = line_bot_api.get_message_content(event.message.id)
-    image_data = BytesIO(message_content.content)
-
     try:
+        # 画像取得
+        message_content = line_bot_api.get_message_content(event.message.id)
+        image_data = BytesIO(message_content.content)
         image = Image.open(image_data)
 
-        # OCRでテキスト抽出
+        # OCRでテキスト抽出（日本語指定）
         ocr_text = pytesseract.image_to_string(image, lang='jpn')
 
-        # OpenAIで予想生成
+        # ChatGPTに送信して予想を生成
         response = openai.ChatCompletion.create(
             model="gpt-4",
             messages=[
@@ -72,6 +72,7 @@ def handle_image(event):
         )
 
     except Exception as e:
+        # エラー発生時の返信
         line_bot_api.push_message(
             event.source.user_id,
             TextSendMessage(text=f"OCR処理でエラーが発生しました：{str(e)}")
