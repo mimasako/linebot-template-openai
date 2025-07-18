@@ -1,4 +1,7 @@
-openai
 fastapi
-line-bot-sdk
+uvicorn
+openai
+line-bot-sdk>=3.0.0
 python-dotenv
+pytesseract
+Pillow
