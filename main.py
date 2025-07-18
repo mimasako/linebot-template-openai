@@ -1,20 +1,19 @@
 import os
-import io
-import openai
 import pytesseract
+import openai
 from fastapi import FastAPI, Request
+from fastapi.responses import PlainTextResponse
 from linebot import LineBotApi, WebhookHandler
-from linebot.exceptions import InvalidSignatureError
 from linebot.models import MessageEvent, TextMessage, ImageMessage, TextSendMessage
-from dotenv import load_dotenv
+from linebot.exceptions import InvalidSignatureError
 from PIL import Image
-
-# ✅ Tesseract のパスを指定（Render の Ubuntu 環境ではこれ）
-pytesseract.pytesseract.tesseract_cmd = "/usr/bin/tesseract"
+import requests
+from io import BytesIO
+from dotenv import load_dotenv
 
 load_dotenv()
 
-# LINE APIキーなど環境変数読み込み
+# APIキーなどの設定
 LINE_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
 LINE_CHANNEL_SECRET = os.getenv("LINE_CHANNEL_SECRET")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -23,31 +22,27 @@ line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
 openai.api_key = OPENAI_API_KEY
 
+# Tesseractコマンドパス（Renderでは通常この場所）
+pytesseract.pytesseract.tesseract_cmd = "/usr/bin/tesseract"
+
 app = FastAPI()
 
 @app.post("/callback")
 async def callback(request: Request):
-    signature = request.headers["x-line-signature"]
+    signature = request.headers.get("X-Line-Signature")
     body = await request.body()
-    body = body.decode("utf-8")
-
     try:
-        handler.handle(body, signature)
+        handler.handle(body.decode("utf-8"), signature)
     except InvalidSignatureError:
-        return "Invalid signature", 400
-
-    return "OK", 200
+        return PlainTextResponse("Invalid signature", status_code=400)
+    return PlainTextResponse("OK", status_code=200)
 
 @handler.add(MessageEvent, message=ImageMessage)
 def handle_image(event):
-    line_bot_api.reply_message(
-        event.reply_token,
-        TextSendMessage(text="画像を受け取りました。処理中です…")
-    )
+    line_bot_api.reply_message(event.reply_token, TextSendMessage(text="画像を受け取りました。処理中です…"))
 
     message_content = line_bot_api.get_message_content(event.message.id)
-    image_data = io.BytesIO(message_content.content)
-    image = Image.open(image_data)
+    image = Image.open(BytesIO(message_content.content))
 
     try:
         text = pytesseract.image_to_string(image, lang="jpn")
@@ -58,7 +53,6 @@ def handle_image(event):
         )
         return
 
-    # OpenAI APIで予想を生成
     try:
         response = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",
