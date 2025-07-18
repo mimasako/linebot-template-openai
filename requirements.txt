@@ -4,3 +4,4 @@ python-dotenv
 line-bot-sdk
 openai
 pillow
+pytesseract
