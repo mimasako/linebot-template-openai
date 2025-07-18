@@ -1,31 +1,35 @@
 import os
-import pytesseract
+import requests
 import openai
+import tempfile
+import pytesseract
 from fastapi import FastAPI, Request
 from fastapi.responses import PlainTextResponse
-from linebot import LineBotApi, WebhookHandler
-from linebot.models import MessageEvent, TextMessage, ImageMessage, TextSendMessage
-from linebot.exceptions import InvalidSignatureError
-from PIL import Image
-import requests
-from io import BytesIO
+from linebot.v3.webhook import WebhookHandler
+from linebot.v3.messaging import (
+    MessagingApi,
+    MessagingApiBlob,
+    ReplyMessageRequest,
+    TextMessage,
+)
+from linebot.v3.exceptions import InvalidSignatureError
+from linebot.v3.models import MessageEvent, ImageMessage
+
 from dotenv import load_dotenv
 
 load_dotenv()
 
-# APIキーなどの設定
-LINE_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
-LINE_CHANNEL_SECRET = os.getenv("LINE_CHANNEL_SECRET")
+app = FastAPI()
+
+CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
+CHANNEL_SECRET = os.getenv("LINE_CHANNEL_SECRET")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
-handler = WebhookHandler(LINE_CHANNEL_SECRET)
+handler = WebhookHandler(CHANNEL_SECRET)
+messaging_api = MessagingApi()
+messaging_api.configuration.access_token = CHANNEL_ACCESS_TOKEN
 openai.api_key = OPENAI_API_KEY
 
-# Tesseractコマンドパス（Renderでは通常この場所）
-pytesseract.pytesseract.tesseract_cmd = "/usr/bin/tesseract"
-
-app = FastAPI()
 
 @app.post("/callback")
 async def callback(request: Request):
@@ -37,35 +41,45 @@ async def callback(request: Request):
         return PlainTextResponse("Invalid signature", status_code=400)
     return PlainTextResponse("OK", status_code=200)
 
-@handler.add(MessageEvent, message=ImageMessage)
-def handle_image(event):
-    line_bot_api.reply_message(event.reply_token, TextSendMessage(text="画像を受け取りました。処理中です…"))
 
-    message_content = line_bot_api.get_message_content(event.message.id)
-    image = Image.open(BytesIO(message_content.content))
+@handler.add(MessageEvent, message=ImageMessage)
+def handle_image_message(event):
+    message_id = event.message.id
+    image_content = MessagingApiBlob().get_message_content(message_id)
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tf:
+        for chunk in image_content.iter_content():
+            tf.write(chunk)
+        temp_image_path = tf.name
 
     try:
-        text = pytesseract.image_to_string(image, lang="jpn")
+        extracted_text = pytesseract.image_to_string(temp_image_path, lang="jpn")
     except Exception as e:
-        line_bot_api.push_message(
-            event.source.user_id,
-            TextSendMessage(text=f"OCR処理でエラーが発生しました：{str(e)}")
+        error_text = f"OCR処理でエラーが発生しました：{str(e)}"
+        reply_message = TextMessage(text=error_text)
+        messaging_api.reply_message(
+            ReplyMessageRequest(
+                reply_token=event.reply_token,
+                messages=[reply_message]
+            )
         )
         return
 
+    prompt = f"次の情報をもとに競艇のレース予想をして：\n{extracted_text}"
     try:
         response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
+            model="gpt-4",
             messages=[
-                {"role": "system", "content": "これはボートレースの出走表です。予想を簡潔に伝えてください。"},
-                {"role": "user", "content": text}
+                {"role": "user", "content": prompt}
             ]
         )
-        result = response["choices"][0]["message"]["content"].strip()
+        result_text = response["choices"][0]["message"]["content"]
     except Exception as e:
-        result = f"AIの応答でエラーが発生しました：{str(e)}"
+        result_text = f"OpenAI APIエラー: {str(e)}"
 
-    line_bot_api.push_message(
-        event.source.user_id,
-        TextSendMessage(text=result)
+    reply_message = TextMessage(text=result_text)
+    messaging_api.reply_message(
+        ReplyMessageRequest(
+            reply_token=event.reply_token,
+            messages=[reply_message]
+        )
     )
